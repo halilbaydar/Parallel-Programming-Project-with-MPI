@@ -12,6 +12,11 @@ using namespace std;
 int returnMinRow(vector<vector<double>> arr, int whichClass);
 pair<int, int> returnMinMaxofColum(vector<vector<double>> arr, int whichcolumn);
 int rankforme = -1;
+set<int> formasterp;
+void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, int iteration);
+void makeManhantenDistance(vector<vector<double>> twodimensionalarr2, vector<vector<double>> twodimensionalarr, int A, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M);
+void printSlaveResult(vector<double> manhattandistance, int A, int T);
+void make1Dto2D(vector<vector<double>> & twodimensionalarr2, vector<vector<double>>& twodimensionalarr,double local_dataset[],int A,int P, int N);
 int main(int argc, char *argv[])
 {
 
@@ -57,14 +62,11 @@ int main(int argc, char *argv[])
                 }
                 catch (exception e)
                 {
-                    //cout << "arr size küçük";
                     break;
                 }
                 index++;
             } while (ss);
         }
-
-        ////cout<<"okuma başarılı"<<endl;
     }
 
     MPI_Scatter(
@@ -78,97 +80,133 @@ int main(int argc, char *argv[])
         //cout<<rank<<" işlem yapıyor"<<endl;
         vector<int> selectedindexes;
         int nearestmissrow = 0, nearesthitrow = 0;
-        double manhattandistance[A];
+        vector<double> manhattandistance(A, 0);
+
         for (int iteration = 0; iteration < M; iteration++)
         {
             //cout<<"iteration yapılıyor rank: "<<rank<<" iteration : "<<iteration<<endl;
             vector<vector<double>> twodimensionalarr;
             vector<vector<double>> twodimensionalarr2;
-            int yy = 0;
+            make1Dto2D(twodimensionalarr2,twodimensionalarr,local_dataset,A,P,N);
+            selectedindexes.push_back(iteration);
+            /*cout<<"rank : "<<rank<<endl;
+            for(int rr=0; rr<twodimensionalarr.size(); rr++){
+                for(int ee=0; ee<(A+1); ee++){
+                        cout<<twodimensionalarr2[rr][ee]<<" "; 
+                }
+                cout<<endl;
+            }*/
+            //cout<<"rank :"<<rank <<"rowlar random rowdan çıkarılıyor"<<endl;
+            makeRelief(twodimensionalarr, A, P, N, iteration);
+
+            //cout<<"rank :"<<rank<<" narest hit ve miss hesaplanıyor"<<endl;
+            nearesthitrow = returnMinRow(twodimensionalarr, twodimensionalarr[iteration][twodimensionalarr[iteration].size() - 1]);
+            nearestmissrow = returnMinRow(twodimensionalarr, 1 - (twodimensionalarr[iteration][twodimensionalarr[iteration].size() - 1]));
+
+            //cout<<"nearestmissrow :"<<nearestmissrow << " nearesthitrow :" <<nearesthitrow<<endl;
+
+            makeManhantenDistance(twodimensionalarr2, twodimensionalarr, A, iteration, manhattandistance, nearestmissrow, nearesthitrow, M);
+            //cout<<"rank :"<<rank<<" manhantan distance hesaplandı "<<endl;
+        }
+        printSlaveResult(manhattandistance, A, T);
+
+        MPI_Send(
+            &formasterp,
+            2,
+            MPI_INT,
+            0,
+            0,
+            MPI_COMM_WORLD);
+    }
+    if (rank == 0)
+    {
+        cout << "Master P0 : ";
+        set<int> tt;
+       /* for (int i = 0; i < P; i++)
+        {*/
+            MPI_Recv(
+                &formasterp,
+                2,
+                MPI_INT,
+                2,
+                0,
+                MPI_COMM_WORLD,
+                MPI_STATUS_IGNORE);
+            for (auto m : formasterp)
+                tt.insert(m);
+       // }
+        for (auto m : tt)
+            cout << m << " ";
+    }
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Finalize();
+    return 0;
+}
+void make1Dto2D(vector<vector<double>> & twodimensionalarr2, vector<vector<double>>& twodimensionalarr,double local_dataset[],int A,int P, int N){
+ int yy = 0;
             for (int i = 0; i < (N / (P - 1)); i++) //converting one dimensional array into two dimensional array
             {
                 vector<double> tempppp;
                 for (int column = 0; column <= A; column++)
                 {
-                    tempppp.push_back(local_dataset[yy]);
+
                     tempppp.push_back(local_dataset[yy]);
                     yy++;
                 }
                 twodimensionalarr2.push_back(tempppp);
                 twodimensionalarr.push_back(tempppp);
             }
-            //cout<<"random row seçiliyor"<<endl;
-            int randomrow = rand() % (N / (P - 1)) + 1; //1 den verilen row sayısına kadar
-            vector<int>::iterator myit = find(selectedindexes.begin(), selectedindexes.end(), randomrow);
-            while (myit != selectedindexes.end())
-            {
-                randomrow = rand() % (N / (P - 1)) + 1; //1 den verilen row sayısına kadar
-                myit = find(selectedindexes.begin(), selectedindexes.end(), randomrow);
-            }
-            selectedindexes.push_back(randomrow);
-            //cout<<"rank :"<<rank <<"rowlar random rowdan çıkarılıyor"<<endl;
-            for (int i = 0; i < (N / (P - 1)); i++)
-            {
-                for (int column = 0; column < A && i != randomrow; column++)
-                {
-                    twodimensionalarr[i][column] -= twodimensionalarr[randomrow][column];
-                }
-            }
-            //cout<<"rank :"<<rank<<" narest hit ve miss hesaplanıyor"<<endl;
-            nearesthitrow = returnMinRow(twodimensionalarr, twodimensionalarr[randomrow][twodimensionalarr[randomrow].size() - 1]);
-            nearestmissrow = returnMinRow(twodimensionalarr, 1 - (twodimensionalarr[randomrow][twodimensionalarr[randomrow].size() - 1]));
-
-            //cout<<"nearestmissrow :"<<nearestmissrow << " nearesthitrow :" <<nearesthitrow<<endl;
-            for (int stepfour = 0; stepfour < A; stepfour++)
-            {
-                /*pair<minindex,maxindex>*/ pair<int, int> minmaxrow = returnMinMaxofColum(twodimensionalarr2, stepfour);
-                //cout<<"minindex : "<<minmaxrow.first<<" maxindex :" <<minmaxrow.second<<endl;
-                double temp = abs(twodimensionalarr2[minmaxrow.first][stepfour] - twodimensionalarr[minmaxrow.second][stepfour]) / M;
-                double temp2 = abs(twodimensionalarr2[randomrow][stepfour] - twodimensionalarr[nearestmissrow][stepfour]);
-                double temp3 = abs(twodimensionalarr2[randomrow][stepfour] - twodimensionalarr[nearesthitrow][stepfour]);
-                manhattandistance[stepfour] = manhattandistance[stepfour]-(temp3 / temp) + (temp2 / temp);
-            }
-            //cout<<"rank :"<<rank<<" manhantan distance hesaplandı "<<endl;
-        }
-        for(auto i:manhattandistance)
-            cout<<i<<" ";
-        cout<<endl;
-        set<double> manhattandistance2;
-        for (int p = 0; p < A; p++)
+}
+void printSlaveResult(vector<double> manhattandistance, int A, int T)
+{
+    priority_queue<double> arr;
+    vector<int> a;
+    cout << "Slave P" << rankforme << " :";
+    for (auto i : manhattandistance)
+        arr.push(i);
+    for (int i = 0; i < T; i++)
+    {
+        for (int j = 0; j < A; j++)
         {
-            manhattandistance2.insert(manhattandistance[p]);
-        }
-        cout << "Slave P" << rank << " :";
-        int oo = 0;
-        for (set<double>::iterator it = manhattandistance2.begin(); it != manhattandistance2.end(); it++)
-        {
-            for (int j = 0; j < A; j++)
+            if (manhattandistance[j] == arr.top())
             {
-                if (*it == manhattandistance[j])
-                {
-                    cout << j << " ";
-                    break;
-                }
-            }
-            oo++;
-            if (oo == T)
+                arr.pop();
+                a.push_back(j);
                 break;
+            }
         }
-        cout << endl;
     }
-    /*
-   if(rank==0){
-       cout<<"rank"<<rank<<endl;
-        for(int i=0; i<parts_size; i++)
-            cout<<local_dataset[i]<<" ";
-        cout<<endl;
-        
-       cout<<parts_size;
+    sort(a.begin(), a.end());
+    for (int i = 0; i < T; i++)
+    {
+        cout << a[i] << " ";
+        formasterp.insert(a[i]);
     }
-    */
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Finalize();
-    return 0;
+    cout << endl;
+}
+void makeManhantenDistance(vector<vector<double>> twodimensionalarr2, vector<vector<double>> twodimensionalarr, int A, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M)
+{
+    for (int stepfour = 0; stepfour < A; stepfour++)
+    {
+        /*pair<minindex,maxindex>*/ pair<int, int> minmaxrow = returnMinMaxofColum(twodimensionalarr2, stepfour);
+        //cout<<"minindex : "<<minmaxrow.first<<" maxindex :" <<minmaxrow.second<<endl;
+        double temp = abs(twodimensionalarr2[minmaxrow.first][stepfour] - twodimensionalarr[minmaxrow.second][stepfour]) / M;
+        double temp2 = abs(twodimensionalarr2[iteration][stepfour] - twodimensionalarr[nearestmissrow][stepfour]);
+        double temp3 = abs(twodimensionalarr2[iteration][stepfour] - twodimensionalarr[nearesthitrow][stepfour]);
+        //cout<<"buraya geldi"<<endl;
+        manhattandistance[stepfour] += -(temp3 / temp) + (temp2 / temp);
+    }
+}
+void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, int iteration)
+{
+    for (int i = 0; i < (N / (P - 1)); i++)
+    {
+        for (int column = 0; column < A && i != iteration; column++)
+        {
+            twodimensionalarr[i][column] -= twodimensionalarr[iteration][column];
+        }
+    }
 }
 int returnMinRow(vector<vector<double>> arr, int whichClass)
 {
