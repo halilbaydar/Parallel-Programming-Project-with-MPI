@@ -1,10 +1,3 @@
-/**
- * Student Name: Halil Baydar
- * Student Number: 2017400297
- * Compile Status:Compiling
- * Program Status:Working
-*/
-#include <complex.h>
 #include <stdio.h>
 #include <mpi.h>
 #include <fstream>
@@ -15,15 +8,15 @@
 #include <queue>
 #include <map>
 #include <bits/stdc++.h>
+#include <complex.h>
 using namespace std;
 int returnMinRow(vector<vector<double>> arr, int whichClass);
 pair<int, int> returnMinMaxofColum(vector<vector<double>> arr, int whichcolumn);
 int rankforme = -1;
-set<int> formasterp;
-void makeRelief(vector<vector<double>> &twodimensionalarr, int iteration);
-void makeManhantenDistance(vector<vector<double>> twodimensionalarr2, vector<vector<double>> twodimensionalarr, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M);
-void printSlaveResult(vector<double> manhattandistance, int T);
-void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, vector<double> local_dataset);
+void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, int iteration);
+void makeManhantenDistance(vector<vector<double>> twodimensionalarr, int A, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M);
+void printSlaveResult(vector<double> manhattandistance, int A, int T, set<int> &formasterp);
+void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, double local_dataset[], int A, int P, int N);
 int main(int argc, char *argv[])
 {
 
@@ -33,39 +26,27 @@ int main(int argc, char *argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     fstream input;
-    int N, A, M, T, P;
-    int parts_size;
     string line, numberofprocess, thenumberofprocess;
-    int sentinfo[6];
-    vector<double> local_dataset;
-    vector<double> global_dataset;
+    input.open(argv[1]);
+    getline(input, numberofprocess);
+    stringstream oo(numberofprocess);
+    oo >> thenumberofprocess;
+    int P = stoi(thenumberofprocess);
+    int N, A, M, T;
+    getline(input, line);
+    stringstream ss(line);
+    ss >> N >> A >> M >> T;
+
+    int parts_size = (N / (P - 1)) * A + (N / (P - 1));
+    double global_dataset[N * A + N + parts_size];
+    double local_dataset[parts_size];
+    for (int i = 0; i < parts_size; i++)
+    {
+        global_dataset[i] = 0;
+    }
     if (rank == 0) // i am in master process
     {
-        cout << "po başladı\n";
-        input.open(argv[1]);
-        getline(input, numberofprocess);
-        stringstream oo(numberofprocess);
-        oo >> thenumberofprocess;
-        P = stoi(thenumberofprocess);
-        getline(input, line);
-        stringstream ss(line);
-        ss >> N >> A >> M >> T;
-
-        parts_size = (N / (P - 1)) * A + (N / (P - 1));
-        sentinfo[0] = {N};
-        sentinfo[1] = {A};
-        sentinfo[2] = {M};
-        sentinfo[3] = {T};
-        sentinfo[4] = {parts_size};
-        sentinfo[5] = {P};
-
-        int hh[N * A + N + parts_size];
-
-        for (int i = 0; i < parts_size; i++)
-        {
-            global_dataset.push_back(0);
-        }
-
+        int index = parts_size;
         while (getline(input, line))
         {
             stringstream ss(line);
@@ -77,129 +58,92 @@ int main(int argc, char *argv[])
                 ss >> var;
                 try
                 {
-                    global_dataset.push_back(stod(var));
+                    global_dataset[index] = stod(var);
                 }
                 catch (exception e)
                 {
                     break;
                 }
+                index++;
             } while (ss);
         }
-        local_dataset.resize(parts_size);
-        cout << "okuma bitti\n";
-
-        cout << "bcast yapıldı\n";
     }
 
-    cout << "distribute başarılı" << endl;
-    MPI_Bcast(
-        &sentinfo,
-        6,
-        MPI_INT,
-        0,
-        MPI_COMM_WORLD);
-
     MPI_Scatter(
-        &global_dataset, N * A + N + parts_size, MPI_DOUBLE,
-        &local_dataset, 0, MPI_DOUBLE,
+        global_dataset, parts_size, MPI_DOUBLE,
+        local_dataset, parts_size, MPI_DOUBLE,
         0, MPI_COMM_WORLD);
-
     if (rank != 0)
     {
-        cout << "slave girdi";
 
-        N = sentinfo[0];
-        A = sentinfo[1];
-        M = sentinfo[2];
-        T = sentinfo[3];
-        parts_size = sentinfo[4];
-        P = sentinfo[5];
-        cout << N << " " << A << " " << M << " " << T << " " << parts_size << " " << P << endl;
-
-      //local_dataset.resize((N / (P - 1)) * A + (N / (P - 1)));
-        for (auto it : local_dataset)
-            cout << it << " ";
-
-        return 0;
-
+        set<int> formasterp;
         rankforme = rank;
-        cout << rank << " işlem yapıyor" << endl;
         vector<int> selectedindexes;
         int nearestmissrow = 0, nearesthitrow = 0;
         vector<double> manhattandistance(A, 0);
 
         for (int iteration = 0; iteration < M; iteration++)
         {
-            cout << "iteration yapılıyor rank: " << rank << " iteration : " << iteration << endl;
             vector<vector<double>> twodimensionalarr;
             vector<vector<double>> twodimensionalarr2;
-            make1Dto2D(twodimensionalarr2, twodimensionalarr, local_dataset);
+            make1Dto2D(twodimensionalarr2, twodimensionalarr, local_dataset, A, P, N);
             selectedindexes.push_back(iteration);
-            /*cout<<"rank : "<<rank<<endl;
-            for(int rr=0; rr<twodimensionalarr.size(); rr++){
-                for(int ee=0; ee<(A+1); ee++){
-                        cout<<twodimensionalarr2[rr][ee]<<" "; 
-                }
-                cout<<endl;
-            }*/
-            //cout<<"rank :"<<rank <<"rowlar random rowdan çıkarılıyor"<<endl;
-            makeRelief(twodimensionalarr, iteration);
-
-            //cout<<"rank :"<<rank<<" narest hit ve miss hesaplanıyor"<<endl;
-            nearesthitrow = returnMinRow(twodimensionalarr, twodimensionalarr[iteration][twodimensionalarr[iteration].size() - 1]);
-            nearestmissrow = returnMinRow(twodimensionalarr, 1 - (twodimensionalarr[iteration][twodimensionalarr[iteration].size() - 1]));
-
-            //cout<<"nearestmissrow :"<<nearestmissrow << " nearesthitrow :" <<nearesthitrow<<endl;
-
-            makeManhantenDistance(twodimensionalarr2, twodimensionalarr, iteration, manhattandistance, nearestmissrow, nearesthitrow, M);
-            //cout<<"rank :"<<rank<<" manhantan distance hesaplandı "<<endl;
+            makeRelief(twodimensionalarr2, A, P, N, iteration);
+            nearesthitrow = returnMinRow(twodimensionalarr2, twodimensionalarr[iteration][twodimensionalarr[iteration].size() - 1]);
+            nearestmissrow = returnMinRow(twodimensionalarr2, 1 - (twodimensionalarr[iteration][twodimensionalarr[iteration].size() - 1]));
+            makeManhantenDistance(twodimensionalarr, A, iteration, manhattandistance, nearestmissrow, nearesthitrow, M);
         }
-        printSlaveResult(manhattandistance, T);
+        printSlaveResult(manhattandistance, A, T, formasterp);
 
+        int xx[1] = {5};
         MPI_Send(
-            &formasterp,
-            2,
+            &xx,
+            T,
             MPI_INT,
             0,
-            2,
+            0,
             MPI_COMM_WORLD);
     }
     if (rank == 0)
     {
-        /*
-        cout << "Master P0 : ";
         set<int> tt;
-        for (int i = 0; i < P; i++)
+        int xx[1];
+        int i=0;
+        while(i < P)
         {
             MPI_Recv(
-                &formasterp,
-                2,
+                &xx,
+                T,
                 MPI_INT,
-                2,
-                2,
+                i,
+                0,
                 MPI_COMM_WORLD,
                 MPI_STATUS_IGNORE);
-
-            for (auto m : formasterp)
+            cout << xx[0] << endl;
+            for (auto m : tt)
                 tt.insert(m);
+            // }
+            cout << "Master P0 : ";
+            for (auto m : tt)
+                cout << m << " ";
+            cout << endl;
+            i++;
         }
-        for (auto m : tt)
-            cout << m << " ";
-            */
-    }
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Finalize();
-    return 0;
+        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Finalize();
+        return 0;
+    }
 }
-void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, vector<double> local_dataset)
+void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, double local_dataset[], int A, int P, int N)
 {
     int yy = 0;
-    for (int i = 0; i < twodimensionalarr2.size(); i++) //converting one dimensional array into two dimensional array
+    for (int i = 0; i < (N / (P - 1)); i++) //converting one dimensional array into two dimensional array
     {
         vector<double> tempppp;
-        for (int column = 0; column <= twodimensionalarr2[0].size(); column++)
+        for (int column = 0; column <= A; column++)
         {
+
             tempppp.push_back(local_dataset[yy]);
             yy++;
         }
@@ -207,16 +151,17 @@ void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double
         twodimensionalarr.push_back(tempppp);
     }
 }
-void printSlaveResult(vector<double> manhattandistance, int T)
+void printSlaveResult(vector<double> manhattandistance, int A, int T, set<int> &formasterp)
 {
     priority_queue<double> arr;
     vector<int> a;
-    cout << "Slave P" << rankforme << " :";
     for (auto i : manhattandistance)
+    {
         arr.push(i);
+    }
     for (int i = 0; i < T; i++)
     {
-        for (int j = 0; j < manhattandistance.size(); j++)
+        for (int j = 0; j < A; j++)
         {
             if (manhattandistance[j] == arr.top())
             {
@@ -226,6 +171,7 @@ void printSlaveResult(vector<double> manhattandistance, int T)
             }
         }
     }
+    cout << "Slave P" << rankforme << " :";
     sort(a.begin(), a.end());
     for (int i = 0; i < T; i++)
     {
@@ -234,26 +180,24 @@ void printSlaveResult(vector<double> manhattandistance, int T)
     }
     cout << endl;
 }
-void makeManhantenDistance(vector<vector<double>> twodimensionalarr2, vector<vector<double>> twodimensionalarr, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M)
+void makeManhantenDistance(vector<vector<double>> twodimensionalarr, int A, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M)
 {
-    for (int stepfour = 0; stepfour < (twodimensionalarr2[0].size() - 1); stepfour++)
+    for (int stepfour = 0; stepfour < A; stepfour++)
     {
-        /*pair<minindex,maxindex>*/ pair<int, int> minmaxrow = returnMinMaxofColum(twodimensionalarr2, stepfour);
-        //cout<<"minindex : "<<minmaxrow.first<<" maxindex :" <<minmaxrow.second<<endl;
-        double temp = cabs(twodimensionalarr2[minmaxrow.first][stepfour] - twodimensionalarr[minmaxrow.second][stepfour]) / M;
-        double temp2 = cabs(twodimensionalarr2[iteration][stepfour] - twodimensionalarr[nearestmissrow][stepfour]);
-        double temp3 = cabs(twodimensionalarr2[iteration][stepfour] - twodimensionalarr[nearesthitrow][stepfour]);
-        //cout<<"buraya geldi"<<endl;
-        manhattandistance[stepfour] += -(temp3 / temp) + (temp2 / temp);
+        /*pair<minindex,maxindex>*/ pair<int, int> minmaxrow = returnMinMaxofColum(twodimensionalarr, stepfour);
+        double temp = cabs(twodimensionalarr[minmaxrow.first][stepfour] - twodimensionalarr[minmaxrow.second][stepfour]) / M;
+        double temp2 = cabs(twodimensionalarr[iteration][stepfour] - twodimensionalarr[nearestmissrow][stepfour]);
+        double temp3 = cabs(twodimensionalarr[iteration][stepfour] - twodimensionalarr[nearesthitrow][stepfour]);
+        manhattandistance[stepfour] += (temp2 / temp) - (temp3 / temp);
     }
 }
-void makeRelief(vector<vector<double>> &twodimensionalarr, int iteration)
+void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, int iteration)
 {
-    for (int i = 0; i < twodimensionalarr.size(); i++)
+    for (int i = 0; i < (N / (P - 1)); i++)
     {
-        for (int column = 0; column < (twodimensionalarr[i].size() - 1) && i != iteration; column++)
+        for (int column = 0; column < A && i != iteration; column++)
         {
-            twodimensionalarr[i][column] -= twodimensionalarr[iteration][column];
+            twodimensionalarr[i][column] = cabs(twodimensionalarr[i][column] - twodimensionalarr[iteration][column]);
         }
     }
 }
@@ -264,12 +208,14 @@ int returnMinRow(vector<vector<double>> arr, int whichClass)
     int row = 0;
     for (row = 0; row < arr.size(); row++)
     {
+        if (arr[row][arr[row].size() - 1] != whichClass)
+            continue;
         int temp = 0;
-        for (int column = 0; column < (arr[row].size() - 1) && arr[row][arr[row].size() - 1] == whichClass; column++)
+        for (int column = 0; column < (arr[row].size() - 1); column++)
         {
             temp += arr[row][column];
         }
-        if (temp < minrow && arr[row][arr[row].size() - 1] == whichClass)
+        if (temp < minrow)
         {
             index = row;
             minrow = temp;
