@@ -15,7 +15,7 @@ pair<int, int> returnMinMaxofColum(vector<vector<double>> arr, int whichcolumn);
 int rankforme = -1;
 void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, int iteration);
 void makeManhantenDistance(vector<vector<double>> twodimensionalarr, int A, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M);
-void printSlaveResult(vector<double> manhattandistance, int A, int T, set<int> &formasterp);
+void printSlaveResult(vector<double> manhattandistance, int A, int T, vector<int> & formasterp);
 void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, double local_dataset[], int A, int P, int N);
 int main(int argc, char *argv[])
 {
@@ -44,6 +44,7 @@ int main(int argc, char *argv[])
     {
         global_dataset[i] = 0;
     }
+    int ttemp[T];
     if (rank == 0) // i am in master process
     {
         int index = parts_size;
@@ -76,7 +77,7 @@ int main(int argc, char *argv[])
     if (rank != 0)
     {
 
-        set<int> formasterp;
+        vector<int> formasterp;
         rankforme = rank;
         vector<int> selectedindexes;
         int nearestmissrow = 0, nearesthitrow = 0;
@@ -94,10 +95,11 @@ int main(int argc, char *argv[])
             makeManhantenDistance(twodimensionalarr, A, iteration, manhattandistance, nearestmissrow, nearesthitrow, M);
         }
         printSlaveResult(manhattandistance, A, T, formasterp);
-
-        int xx[1] = {5};
+        
+        for(int uu=0; uu<T; uu++)
+            ttemp[uu]=formasterp[uu];
         MPI_Send(
-            &xx,
+            &ttemp,
             T,
             MPI_INT,
             0,
@@ -107,33 +109,31 @@ int main(int argc, char *argv[])
     if (rank == 0)
     {
         set<int> tt;
-        int xx[1];
-        int i=0;
-        while(i < P)
+        int i = 1;
+        cout << "Master P0 : ";
+        while (i<P)
         {
             MPI_Recv(
-                &xx,
+                &ttemp,
                 T,
                 MPI_INT,
                 i,
                 0,
                 MPI_COMM_WORLD,
-                MPI_STATUS_IGNORE);
-            cout << xx[0] << endl;
-            for (auto m : tt)
+                MPI_STATUS_IGNORE
+            );
+            for (auto m : ttemp)
                 tt.insert(m);
             // }
-            cout << "Master P0 : ";
-            for (auto m : tt)
-                cout << m << " ";
-            cout << endl;
+
             i++;
         }
-
-        MPI_Barrier(MPI_COMM_WORLD);
-        MPI_Finalize();
-        return 0;
+        for (auto m : tt)
+            cout << m << " ";
     }
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Finalize();
+    return 0;
 }
 void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, double local_dataset[], int A, int P, int N)
 {
@@ -151,7 +151,7 @@ void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double
         twodimensionalarr.push_back(tempppp);
     }
 }
-void printSlaveResult(vector<double> manhattandistance, int A, int T, set<int> &formasterp)
+void printSlaveResult(vector<double> manhattandistance, int A, int T, vector<int> & formasterp)
 {
     priority_queue<double> arr;
     vector<int> a;
@@ -176,7 +176,7 @@ void printSlaveResult(vector<double> manhattandistance, int A, int T, set<int> &
     for (int i = 0; i < T; i++)
     {
         cout << a[i] << " ";
-        formasterp.insert(a[i]);
+        formasterp.push_back(a[i]);
     }
     cout << endl;
 }
