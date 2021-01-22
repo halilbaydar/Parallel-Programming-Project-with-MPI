@@ -17,6 +17,15 @@ void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, 
 void makeManhantenDistance(vector<vector<double>> twodimensionalarr, int A, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M);
 void printSlaveResult(vector<double> manhattandistance, int A, int T, vector<int> &formasterp);
 void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, double local_dataset[], int A, int P, int N);
+/*
+In the main function all processors read first two line in order to determine the size of local data and global data arrays. 
+Then Master process reads all N lines data and scatters it to all slaves by dividing the data equal size.
+In the main function, if rank is not equal to rank 0 ,which means I am in slave processors, iterations steps are applied by 
+slave processors.And finally results are written to console and also sent to master process. In order to wait all processors’ 
+process I used MPI_Barrier(MPI_COMM_WORLD) to write all outputs to console before the master processor does. 
+In master processors master processor receives all results from slave processors and writes them to console in ascending order. 
+And all of them is terminated.
+*/
 int main(int argc, char *argv[])
 {
 
@@ -30,12 +39,12 @@ int main(int argc, char *argv[])
     input.open(argv[1]);
     getline(input, numberofprocess);
     stringstream oo(numberofprocess);
-    oo >> thenumberofprocess;
+    oo >> thenumberofprocess; //reads the number of processors
     int P = stoi(thenumberofprocess);
     int N, A, M, T;
     getline(input, line);
     stringstream ss(line);
-    ss >> N >> A >> M >> T;
+    ss >> N >> A >> M >> T; //reads second line
 
     int parts_size = (N / (P - 1)) * A + (N / (P - 1));
     double global_dataset[N * A + N + parts_size];
@@ -47,6 +56,7 @@ int main(int argc, char *argv[])
     int ttemp[T];
     if (rank == 0) // i am in master process
     {
+        //reads N data lines
         int index = parts_size;
         while (getline(input, line))
         {
@@ -69,20 +79,21 @@ int main(int argc, char *argv[])
             } while (ss);
         }
     }
-
+    //scatter the all data to slave processors
     MPI_Scatter(
         global_dataset, parts_size, MPI_DOUBLE,
         local_dataset, parts_size, MPI_DOUBLE,
         0, MPI_COMM_WORLD);
     if (rank != 0)
     {
-
+        //if rank is not equal to master processor, make iteration in given data
         vector<int> formasterp;
         rankforme = rank;
         vector<int> selectedindexes;
         int nearestmissrow = 0, nearesthitrow = 0;
         vector<double> manhattandistance(A, 0);
 
+        //iteration for-loop
         for (int iteration = 0; iteration < M; iteration++)
         {
             vector<vector<double>> twodimensionalarr;
@@ -94,10 +105,12 @@ int main(int argc, char *argv[])
             nearestmissrow = returnMinRow(twodimensionalarr2, 1 - (twodimensionalarr[iteration][twodimensionalarr[iteration].size() - 1]));
             makeManhantenDistance(twodimensionalarr, A, iteration, manhattandistance, nearestmissrow, nearesthitrow, M);
         }
+        //print result
         printSlaveResult(manhattandistance, A, T, formasterp);
 
         for (int uu = 0; uu < T; uu++)
             ttemp[uu] = formasterp[uu];
+        //send T result to master processor    
         MPI_Send(
             &ttemp,
             T,
@@ -106,7 +119,7 @@ int main(int argc, char *argv[])
             0,
             MPI_COMM_WORLD);
     }
-
+    //wait all slave processors to continue properly
     MPI_Barrier(MPI_COMM_WORLD);
     if (rank == 0)
     {
@@ -115,6 +128,7 @@ int main(int argc, char *argv[])
         cout << "Master P0 : ";
         while (i < P)
         {
+            //receive all results from slave processors and print them in ascending order
             MPI_Recv(
                 &ttemp,
                 T,
@@ -133,9 +147,11 @@ int main(int argc, char *argv[])
             cout << m << " ";
         cout << endl;
     }
+    //finilize
     MPI_Finalize();
     return 0;
 }
+//I broadcasts N lines data in one dimensional array and due to that I need to make 1D array to 2D array in order not to confuse me in processing all.
 void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double>> &twodimensionalarr, double local_dataset[], int A, int P, int N)
 {
     int yy = 0;
@@ -152,6 +168,7 @@ void make1Dto2D(vector<vector<double>> &twodimensionalarr2, vector<vector<double
         twodimensionalarr.push_back(tempppp);
     }
 }
+//This function writes the result to console and it is called only in slave processes.
 void printSlaveResult(vector<double> manhattandistance, int A, int T, vector<int> &formasterp)
 {
     priority_queue<double> arr;
@@ -181,6 +198,7 @@ void printSlaveResult(vector<double> manhattandistance, int A, int T, vector<int
     }
     cout << endl;
 }
+//This function applies the manhanten distance formula with given parameters
 void makeManhantenDistance(vector<vector<double>> twodimensionalarr, int A, int iteration, vector<double> &manhattandistance, int nearestmissrow, int nearesthitrow, int M)
 {
     for (int stepfour = 0; stepfour < A; stepfour++)
@@ -192,6 +210,10 @@ void makeManhantenDistance(vector<vector<double>> twodimensionalarr, int A, int 
         manhattandistance[stepfour] += (temp2 / temp) - (temp3 / temp);
     }
 }
+/*
+This function makes absolute subtract operation between the selected instance and  
+all other instance expext itself to help in finding the nearest hit and the nearest miss.
+*/
 void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, int iteration)
 {
     for (int i = 0; i < (N / (P - 1)); i++)
@@ -202,6 +224,11 @@ void makeRelief(vector<vector<double>> &twodimensionalarr, int A, int P, int N, 
         }
     }
 }
+/*
+This function iterates the given data according to considered class type and sums all 
+features in one class and compares other sums of same class. Finally returns given class 
+row of the minimum sum. That is, If class parameter is same with the iterated class, the 
+return value is the nearest hit, otherwise the nearest miss.*/
 int returnMinRow(vector<vector<double>> arr, int whichClass)
 {
     int minrow = INT16_MAX;
@@ -225,6 +252,8 @@ int returnMinRow(vector<vector<double>> arr, int whichClass)
     return index;
 }
 
+/*
+This function returns the indicies of the max and min value in given column to apply manhanten distance algowithm. */
 pair<int, int> returnMinMaxofColum(vector<vector<double>> arr, int whichcolumn)
 {
     double Min = INT_MAX, Max = INT_MIN;
